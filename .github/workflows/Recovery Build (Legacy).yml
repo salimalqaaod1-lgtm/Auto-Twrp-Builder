@@ -14,9 +14,9 @@ on:
       MANIFEST_BRANCH:
         description: 'MANIFEST_BRANCH'
         required: true
-        default: 'twrp-8.1'
+        default: 'twrp-11'
       BUILD_TARGET:
-        description: 'BUILD_TARGET'
+        description: 'Target to build (recovery/boot)'
         required: true
         default: 'recovery'
 
