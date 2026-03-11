@@ -124,8 +124,13 @@ jobs:
       run: |
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
+        # إضافة هذه الأسطر لضمان التوافق مع المعالجات الضعيفة أو القديمة
+        export LC_ALL=C 
+        export ARCH=arm
+        
         lunch ${{ steps.gdt.outputs.MAKEFILE_NAME }}-eng
         make clean
+        # استخدام j$(nproc --all) قد يسبب فشل إذا كانت الذاكرة قليلة، لكن الـ Swap سيساعد
         make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
       working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
