@@ -1,0 +1,94 @@
+name: Recovery Builder (ARM32)
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'Branch of TWRP/Omni Manifest'
+        required: true
+        default: 'twrp-9.0'
+      BUILD_TARGET:
+        description: 'Target to build (recovery/boot)'
+        required: true
+        default: 'recovery'
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Cleanup Space
+      run: |
+        sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
+        sudo apt update
+        sudo apt install -y bc build-essential zip curl libstdc++6 git wget python3 python2
+        
+    - name: Set Password
+      run: |
+        echo "ROOT_PASSWORD=password" | sudo tee -a /etc/environment
+        sudo echo "root:password" | sudo chpasswd
+
+    - name: Set PWD
+      id: pwd
+      run: |
+        echo "workspace-folder=$(pwd)/workspace" >> $GITHUB_OUTPUT
+
+    - name: Init Repo
+      run: |
+        mkdir workspace
+        cd workspace
+        git config --global user.email "salim.alqaaod1@gmail.com"
+        git config --global user.name "salimalqaaod1-lgtm"
+        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git -b ${{ github.event.inputs.MANIFEST_BRANCH }}
+      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+
+    - name: Generate Device Tree
+      run: |
+        # سحب الريكفري الذي رفعته أنت مسبقاً للمستودع
+        wget https://github.com/salimalqaaod1-lgtm/Auto-Twrp-Builder/tree/master/recovery.img
+        python3 ${GITHUB_WORKSPACE}/scripts/build.py -i recovery.img -o device
+      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+      id: gdt
+
+    - name: Set Swap Space
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 12
+
+    - name: Switch to Python2
+      run: |
+        sudo rm -rf /usr/bin/python
+        sudo ln -s /usr/bin/python2 /usr/bin/python
+      continue-on-error: true
+
+    - name: Building recovery
+      run: |
+        source build/envsetup.sh
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export LC_ALL=C
+        # تحديد المعمارية لـ arm32
+        export ARCH=arm
+        
+        # استخراج اسم الجهاز التلقائي من الخطوة السابقة
+        lunch ${{ steps.gdt.outputs.MAKEFILE_NAME }}-eng || lunch twrp_${{ steps.gdt.outputs.DEVICE_NAME }}-eng
+        
+        make clean
+        make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+
+    - name: Upload to Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: | 
+          workspace/out/target/product/${{ steps.gdt.outputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
+          workspace/out/target/product/${{ steps.gdt.outputs.DEVICE_NAME }}/*.zip
+        name: ${{ steps.gdt.outputs.DEVICE_NAME }}-${{ github.run_id }}
+        tag_name: ${{ github.run_id }}
+        body: |
+          Device: ${{ steps.gdt.outputs.DEVICE_NAME }}
+          Arch: ARM32
+          Target: ${{ github.event.inputs.BUILD_TARGET }}.img
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
